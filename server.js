@@ -295,6 +295,7 @@ async function sincronizarCalendario() {
     if (keyRaw.startsWith('{')) {
       // JSON completo — parse e usa GoogleAuth
       const keyJson = JSON.parse(keyRaw);
+      console.log('Service Account email:', keyJson.client_email);
       auth = new google.auth.GoogleAuth({
         credentials: keyJson,
         scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
@@ -302,6 +303,7 @@ async function sincronizarCalendario() {
       // Impersonar o dono do calendar
       const client = await auth.getClient();
       client.subject = process.env.CALENDAR_OWNER_EMAIL;
+      console.log('Impersonando:', process.env.CALENDAR_OWNER_EMAIL);
       auth = client;
     } else {
       // Fallback: campos separados
@@ -316,13 +318,18 @@ async function sincronizarCalendario() {
     const calendar = google.calendar({ version: 'v3', auth });
     const profsRes = await pool.query("SELECT email FROM usuarios WHERE perfil='professor'");
     const emailsProfs = new Set(profsRes.rows.map(r => r.email.toLowerCase()));
+    console.log('Professores cadastrados:', emailsProfs.size);
 
     const agora = new Date();
     const janela = new Date();
     janela.setDate(janela.getDate() + 30);
 
-    // Busca em todas as agendas do calendário do owner
+    // Lista todas as agendas disponíveis
     const calList = await calendar.calendarList.list();
+    const calendarios = calList.data.items || [];
+    console.log('Agendas encontradas:', calendarios.length);
+    calendarios.forEach(c => console.log(' -', c.summary, '|', c.id));
+
     let novos = 0;
 
     for (const cal of calList.data.items || []) {
