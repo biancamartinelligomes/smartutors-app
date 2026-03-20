@@ -288,12 +288,30 @@ app.post('/api/aulas/:id/professor', requireAuth, async (req, res) => {
 // ── SINCRONIZAÇÃO GOOGLE CALENDAR ───────────────────────────
 async function sincronizarCalendario() {
   try {
-    const auth = new google.auth.JWT({
-      email:   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      key:     (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '').replace(/\\n/g, '\n'),
-      scopes:  ['https://www.googleapis.com/auth/calendar.readonly'],
-      subject: process.env.CALENDAR_OWNER_EMAIL
-    });
+    // Suporte a duas formas: JSON completo ou campos separados
+    let auth;
+    const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '';
+
+    if (keyRaw.startsWith('{')) {
+      // JSON completo — parse e usa GoogleAuth
+      const keyJson = JSON.parse(keyRaw);
+      auth = new google.auth.GoogleAuth({
+        credentials: keyJson,
+        scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+      });
+      // Impersonar o dono do calendar
+      const client = await auth.getClient();
+      client.subject = process.env.CALENDAR_OWNER_EMAIL;
+      auth = client;
+    } else {
+      // Fallback: campos separados
+      auth = new google.auth.JWT({
+        email:   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+        key:     keyRaw.replace(/\\n/g, '\n'),
+        scopes:  ['https://www.googleapis.com/auth/calendar.readonly'],
+        subject: process.env.CALENDAR_OWNER_EMAIL
+      });
+    }
 
     const calendar = google.calendar({ version: 'v3', auth });
     const profsRes = await pool.query("SELECT email FROM usuarios WHERE perfil='professor'");
