@@ -84,7 +84,7 @@ app.use(session({
 passport.use(new GoogleStrategy({
   clientID:     process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL:  process.env.CALLBACK_URL || '/auth/google/callback'
+  callbackURL:  'https://smartutors.up.railway.app/auth/google/callback'
 }, async (accessToken, refreshToken, profile, done) => {
   const email = profile.emails[0].value;
   const nome  = profile.displayName;
@@ -321,6 +321,8 @@ async function sincronizarCalendario() {
     console.log('Professores cadastrados:', emailsProfs.size);
 
     const agora = new Date();
+    const inicioDia = new Date();
+    inicioDia.setHours(0, 0, 0, 0); // começa da meia-noite de hoje
     const janela = new Date();
     janela.setDate(janela.getDate() + 30);
 
@@ -337,7 +339,7 @@ async function sincronizarCalendario() {
       try {
         eventos = await calendar.events.list({
           calendarId:   cal.id,
-          timeMin:      agora.toISOString(),
+          timeMin:      inicioDia.toISOString(),
           timeMax:      janela.toISOString(),
           singleEvents: true,
           orderBy:      'startTime',
