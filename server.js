@@ -380,12 +380,9 @@ async function sincronizarCalendario() {
         const dtInicio   = new Date(ev.start.dateTime);
         const dtFim      = new Date(ev.end.dateTime);
 
-        // Converte para horário de Brasília (UTC-3)
-        const offsetBrasilia = -3 * 60; // minutos
-        const offsetLocal    = dtInicio.getTimezoneOffset(); // minutos
-        const diffMin        = offsetBrasilia - offsetLocal;
-        const dtInicioLocal  = new Date(dtInicio.getTime() - diffMin * 60000);
-        const dtFimLocal     = new Date(dtFim.getTime()    - diffMin * 60000);
+        // Servidor roda em UTC — converte para Brasília (UTC-3)
+        const dtInicioLocal  = new Date(dtInicio.getTime() - 3 * 60 * 60 * 1000);
+        const dtFimLocal     = new Date(dtFim.getTime()    - 3 * 60 * 60 * 1000);
 
         await pool.query(
           `INSERT INTO aulas (id, titulo, professor_email, data_aula, hora_inicio, hora_fim, telefone_responsavel)
