@@ -194,12 +194,15 @@ app.get('/api/aulas', requireAuth, async (req, res) => {
     const result = await pool.query(query, params);
 
     const agora = new Date();
+
     const aulas = result.rows
       .filter(a => !a.tem_feedback)
       .map(a => {
         const [h, m] = (a.hora_inicio || '00:00').split(':');
-        const dtInicio = new Date(a.data_aula);
-        dtInicio.setHours(parseInt(h), parseInt(m), 0, 0);
+        const dataStr = a.data_aula instanceof Date
+          ? a.data_aula.toISOString().split('T')[0]
+          : String(a.data_aula).split('T')[0];
+        const dtInicio = new Date(`${dataStr}T${pad(parseInt(h))}:${pad(parseInt(m))}:00-03:00`);
         return {
           id:                 a.id,
           titulo:             a.titulo,
@@ -377,6 +380,13 @@ async function sincronizarCalendario() {
         const dtInicio   = new Date(ev.start.dateTime);
         const dtFim      = new Date(ev.end.dateTime);
 
+        // Converte para horário de Brasília (UTC-3)
+        const offsetBrasilia = -3 * 60; // minutos
+        const offsetLocal    = dtInicio.getTimezoneOffset(); // minutos
+        const diffMin        = offsetBrasilia - offsetLocal;
+        const dtInicioLocal  = new Date(dtInicio.getTime() - diffMin * 60000);
+        const dtFimLocal     = new Date(dtFim.getTime()    - diffMin * 60000);
+
         await pool.query(
           `INSERT INTO aulas (id, titulo, professor_email, data_aula, hora_inicio, hora_fim, telefone_responsavel)
            VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
@@ -384,9 +394,9 @@ async function sincronizarCalendario() {
             ev.id,
             ev.summary || 'Aula',
             profEmail || null,
-            dtInicio.toISOString().split('T')[0],
-            pad(dtInicio.getHours()) + ':' + pad(dtInicio.getMinutes()),
-            pad(dtFim.getHours())    + ':' + pad(dtFim.getMinutes()),
+            dtInicioLocal.toISOString().split('T')[0],
+            pad(dtInicioLocal.getUTCHours()) + ':' + pad(dtInicioLocal.getUTCMinutes()),
+            pad(dtFimLocal.getUTCHours())    + ':' + pad(dtFimLocal.getUTCMinutes()),
             telefone || null
           ]
         );
