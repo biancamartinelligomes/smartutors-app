@@ -166,7 +166,9 @@ app.get('/api/me', requireAuth, (req, res) => {
 app.get('/api/aulas', requireAuth, async (req, res) => {
   try {
     const { email, perfil } = req.user;
-    const hoje = new Date();
+
+    // Hoje no horário de Brasília
+    const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
     hoje.setHours(0, 0, 0, 0);
 
     let query, params;
@@ -435,7 +437,6 @@ function formatDateTime(d) {
 initDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Smartutors App rodando na porta ${PORT}`);
-    // Sincroniza a cada 15 minutos
     sincronizarCalendario();
     setInterval(sincronizarCalendario, 15 * 60 * 1000);
   });
