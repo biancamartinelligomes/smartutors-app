@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Smartutors</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#F5C300">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Smartutors">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#F2F2F2;--white:#fff;--ink:#0A0A0A;--muted:#737373;--border:#E0E0E0;--yellow:#F5C300;--yellow-bg:#FFFBE6;--yellow-dark:#B08A00;--green:#1A7A4A;--green-bg:#E8F5EE;--red:#C0392B;--red-bg:#FDECEA;--radius:16px;--radius-sm:10px;--shadow:0 2px 16px rgba(0,0,0,.07);--shadow-lg:0 8px 32px rgba(0,0,0,.13);}
@@ -60,6 +66,9 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(-
 .fb-aluno{font-size:.82rem;color:var(--ink);font-weight:600;margin-bottom:8px;}
 .fb-text{font-size:.9rem;color:var(--ink);line-height:1.65;background:var(--bg);padding:12px 14px;border-radius:var(--radius-sm);}
 .fb-img{width:100%;max-height:220px;object-fit:cover;border-radius:var(--radius-sm);margin-top:10px;cursor:pointer;}
+.btn-confirmar{width:100%;margin-top:14px;padding:11px;background:var(--green-bg);color:var(--green);font-family:'Plus Jakarta Sans',sans-serif;font-size:.85rem;font-weight:700;border:1.5px solid var(--green);border-radius:var(--radius-sm);cursor:pointer;transition:all .2s;}
+.btn-confirmar:hover{background:var(--green);color:#fff;}
+.btn-confirmar:disabled{opacity:.6;cursor:default;}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,10,10,.65);z-index:200;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px);}
 .modal-overlay.open{display:flex;}
 .modal{background:var(--white);border-radius:24px 24px 0 0;padding:24px 20px 40px;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;animation:slideUp .35s cubic-bezier(.34,1.56,.64,1);}
@@ -231,16 +240,30 @@ function carregarFeedbacks(){
 function renderFeedbacks(lista){
   document.getElementById('countFeedbacks').textContent=lista.length;
   var c=document.getElementById('listaFeedbacks');
-  if(!lista.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-text">Nenhum feedback enviado ainda.</div></div>';return;}
+  if(!lista.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-text">Nenhum feedback pendente de confirmação.</div></div>';return;}
   c.innerHTML='';
   lista.forEach(function(fb,idx){
     var ini=fb.professor.split('@')[0].substring(0,2).toUpperCase();
     var imgH=fb.imagemUrl?'<img class="fb-img" src="'+fb.imagemUrl+'" onclick="window.open(this.src)">':'';
+    var btnConfirmar=usuario.perfil==='admin'
+      ?'<button class="btn-confirmar" onclick="confirmarFeedback('+fb.id+',this)">✓ Confirmar e arquivar</button>'
+      :'';
     var card=document.createElement('div');
     card.className='feedback-card';card.style.animationDelay=(idx*.04)+'s';
-    card.innerHTML='<div class="fb-header"><div class="fb-avatar">'+ini+'</div><div class="fb-meta"><div class="fb-prof">'+fb.professor+'</div><div class="fb-date">'+fb.timestamp+'</div></div></div><div class="fb-aluno">👤 '+fb.aluno+'</div><div class="fb-text">'+fb.feedback+'</div>'+imgH;
+    card.innerHTML='<div class="fb-header"><div class="fb-avatar">'+ini+'</div><div class="fb-meta"><div class="fb-prof">'+fb.professor+'</div><div class="fb-date">'+fb.timestamp+'</div></div></div><div class="fb-aluno">👤 '+fb.aluno+'</div><div class="fb-text">'+fb.feedback+'</div>'+imgH+btnConfirmar;
     c.appendChild(card);
   });
+}
+
+function confirmarFeedback(id, btn){
+  btn.disabled=true;btn.textContent='Arquivando...';
+  fetch('/api/feedbacks/'+id+'/confirmar',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(){
+      mostrarToast('Feedback confirmado e arquivado!','ok');
+      carregarFeedbacks();
+    })
+    .catch(function(){btn.disabled=false;btn.textContent='✓ Confirmar e arquivar';mostrarToast('Erro ao confirmar','erro');});
 }
 
 // ── MODAL
@@ -318,6 +341,11 @@ function mostrarToast(msg,tipo){
   var t=document.getElementById('toast');t.textContent=msg;
   t.className='toast show'+(tipo?' '+tipo:'');
   if(tt) clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('show');},3000);
+}
+
+// Registra Service Worker para PWA
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').catch(function(){});
 }
 </script>
 </body>
