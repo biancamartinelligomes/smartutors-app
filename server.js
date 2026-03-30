@@ -47,8 +47,11 @@ async function initDB() {
       data_aula VARCHAR(20),
       feedback TEXT,
       imagem_url VARCHAR(500),
+      confirmado BOOLEAN DEFAULT FALSE,
       criado_em TIMESTAMP DEFAULT NOW()
     );
+    -- Adiciona coluna se já existia a tabela sem ela
+    ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS confirmado BOOLEAN DEFAULT FALSE;
     CREATE TABLE IF NOT EXISTS alertas_enviados (
       id SERIAL PRIMARY KEY,
       aula_id VARCHAR(300),
@@ -231,14 +234,17 @@ app.get('/api/feedbacks', requireAuth, async (req, res) => {
     const { email, perfil } = req.user;
     let query, params;
     if (perfil === 'admin') {
-      query = 'SELECT * FROM feedbacks ORDER BY criado_em DESC';
+      // Admin vê todos os não confirmados
+      query = 'SELECT * FROM feedbacks WHERE confirmado = FALSE ORDER BY criado_em DESC';
       params = [];
     } else {
-      query = 'SELECT * FROM feedbacks WHERE professor_email=$1 ORDER BY criado_em DESC';
+      // Professor vê apenas os seus, não confirmados
+      query = 'SELECT * FROM feedbacks WHERE professor_email=$1 AND confirmado = FALSE ORDER BY criado_em DESC';
       params = [email];
     }
     const result = await pool.query(query, params);
     res.json(result.rows.map(f => ({
+      id:        f.id,
       idAula:    f.aula_id,
       professor: f.professor_email,
       aluno:     f.aluno,
@@ -247,6 +253,17 @@ app.get('/api/feedbacks', requireAuth, async (req, res) => {
       imagemUrl: f.imagem_url || '',
       timestamp: formatDateTime(f.criado_em)
     })));
+  } catch(e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// ── API: CONFIRMAR FEEDBACK (somente admin) ─────────────────
+app.post('/api/feedbacks/:id/confirmar', requireAuth, async (req, res) => {
+  if (req.user.perfil !== 'admin') return res.status(403).json({ erro: 'Sem permissão' });
+  try {
+    await pool.query('UPDATE feedbacks SET confirmado = TRUE WHERE id = $1', [req.params.id]);
+    res.json({ sucesso: true });
   } catch(e) {
     res.status(500).json({ erro: e.message });
   }
