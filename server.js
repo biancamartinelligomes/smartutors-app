@@ -170,30 +170,24 @@ app.get('/api/aulas', requireAuth, async (req, res) => {
   try {
     const { email, perfil } = req.user;
 
-    // Hoje no horário de Brasília
-    const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-    hoje.setHours(0, 0, 0, 0);
-
     let query, params;
     if (perfil === 'admin') {
       query = `
         SELECT a.*, 
           EXISTS(SELECT 1 FROM feedbacks f WHERE f.aula_id = a.id) as tem_feedback
         FROM aulas a
-        WHERE a.data_aula >= $1
         ORDER BY a.data_aula ASC, a.hora_inicio ASC
       `;
-      params = [hoje];
+      params = [];
     } else {
       query = `
         SELECT a.*,
           EXISTS(SELECT 1 FROM feedbacks f WHERE f.aula_id = a.id) as tem_feedback
         FROM aulas a
-        WHERE a.data_aula >= $1
-          AND a.professor_email = $2
+        WHERE a.professor_email = $1
         ORDER BY a.data_aula ASC, a.hora_inicio ASC
       `;
-      params = [hoje, email];
+      params = [email];
     }
 
     const result = await pool.query(query, params);
