@@ -228,11 +228,9 @@ app.get('/api/feedbacks', requireAuth, async (req, res) => {
     const { email, perfil } = req.user;
     let query, params;
     if (perfil === 'admin') {
-      // Admin vê todos os não confirmados
       query = 'SELECT * FROM feedbacks WHERE confirmado = FALSE ORDER BY criado_em DESC';
       params = [];
     } else {
-      // Professor vê apenas os seus, não confirmados
       query = 'SELECT * FROM feedbacks WHERE professor_email=$1 AND confirmado = FALSE ORDER BY criado_em DESC';
       params = [email];
     }
@@ -246,6 +244,35 @@ app.get('/api/feedbacks', requireAuth, async (req, res) => {
       feedback:  f.feedback,
       imagemUrl: f.imagem_url || '',
       timestamp: formatDateTime(f.criado_em)
+    })));
+  } catch(e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// ── API: FEEDBACKS ENVIADOS (professor vê os seus já confirmados) ──
+app.get('/api/feedbacks/enviados', requireAuth, async (req, res) => {
+  try {
+    const { email, perfil } = req.user;
+    let query, params;
+    if (perfil === 'admin') {
+      query = 'SELECT * FROM feedbacks WHERE confirmado = TRUE ORDER BY criado_em DESC';
+      params = [];
+    } else {
+      query = 'SELECT * FROM feedbacks WHERE professor_email=$1 ORDER BY criado_em DESC';
+      params = [email];
+    }
+    const result = await pool.query(query, params);
+    res.json(result.rows.map(f => ({
+      id:          f.id,
+      idAula:      f.aula_id,
+      professor:   f.professor_email,
+      aluno:       f.aluno,
+      dataAula:    f.data_aula,
+      feedback:    f.feedback,
+      imagemUrl:   f.imagem_url || '',
+      confirmado:  f.confirmado,
+      timestamp:   formatDateTime(f.criado_em)
     })));
   } catch(e) {
     res.status(500).json({ erro: e.message });
