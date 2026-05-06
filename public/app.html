@@ -134,8 +134,13 @@ body{font-family:'Jost',sans-serif;font-weight:300;background:var(--warm-white);
       <div id="listaAulas"><div class="empty-state"><div class="loading-bar" style="margin:0 auto;animation:barIn 1.5s ease infinite alternate;"></div></div></div>
     </div>
     <div id="tab-feedbacks" style="display:none;">
-      <div class="section-label">Feedbacks enviados<span class="count-pill" id="countFeedbacks">0</span></div>
+      <div class="section-label" id="labelEnviados">Feedbacks enviados<span class="count-pill" id="countFeedbacks">0</span></div>
       <div id="listaFeedbacks"><div class="empty-state"><div class="loading-bar" style="margin:0 auto;animation:barIn 1.5s ease infinite alternate;"></div></div></div>
+      <!-- Aba extra para professor: feedbacks já confirmados pelo admin -->
+      <div id="secaoConfirmados" style="display:none;margin-top:32px;">
+        <div class="section-label">Confirmados pelo admin<span class="count-pill" id="countConfirmados">0</span></div>
+        <div id="listaConfirmados"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -164,6 +169,7 @@ window.onload=function(){
     document.getElementById('userMonogram').textContent=ini;
     document.getElementById('userName').textContent=u.nome||u.email;
     if(u.perfil==='admin')document.getElementById('adminTag').style.display='block';
+    if(u.perfil==='professor')document.getElementById('labelEnviados').childNodes[0].textContent='Meus feedbacks enviados';
     var el=document.getElementById('loading');el.style.opacity='0';
     setTimeout(function(){el.style.display='none';document.getElementById('app').style.display='block';},500);
     carregarAulas();carregarFeedbacks();
@@ -197,7 +203,36 @@ function renderAulas(lista){
   });
 }
 function atribuirProf(sel){if(!sel.value)return;fetch('/api/aulas/'+sel.dataset.id+'/professor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:sel.value})}).then(function(){mostrarToast('Professor atribuído','ok');carregarAulas();});}
-function carregarFeedbacks(){fetch('/api/feedbacks').then(function(r){return r.json();}).then(renderFeedbacks);}
+function carregarFeedbacks(){
+  fetch('/api/feedbacks').then(function(r){return r.json();}).then(renderFeedbacks);
+  // Para professores, carrega também os já confirmados
+  if(usuario.perfil==='professor'){
+    fetch('/api/feedbacks/enviados').then(function(r){return r.json();}).then(renderConfirmados);
+  }
+}
+function renderConfirmados(lista){
+  // Filtra apenas os confirmados para o professor
+  var confirmados=lista.filter(function(f){return f.confirmado;});
+  document.getElementById('countConfirmados').textContent=confirmados.length;
+  var sec=document.getElementById('secaoConfirmados');
+  sec.style.display=confirmados.length>0?'block':'none';
+  var c=document.getElementById('listaConfirmados');
+  if(!confirmados.length){c.innerHTML='';return;}
+  c.innerHTML='';
+  confirmados.forEach(function(fb,idx){
+    var ini=fb.professor.split('@')[0].substring(0,2).toUpperCase();
+    var imgH=fb.imagemUrl?'<img class="fb-img" src="'+fb.imagemUrl+'" onclick="window.open(this.src)">':'';
+    var card=document.createElement('div');
+    card.className='feedback-card';card.style.animationDelay=(idx*.05)+'s';
+    card.style.opacity='0.7';
+    card.innerHTML=
+      '<div class="fb-header"><div class="fb-monogram" style="background:var(--forest);">'+ini+'</div>'+
+      '<div class="fb-meta"><div class="fb-prof">'+fb.professor+'</div><div class="fb-date">'+fb.timestamp+' · ✓ Confirmado</div></div></div>'+
+      '<div class="fb-aluno">'+fb.aluno+'</div><div class="fb-divider"></div>'+
+      '<div class="fb-text">'+fb.feedback+'</div>'+imgH;
+    c.appendChild(card);
+  });
+}
 function renderFeedbacks(lista){
   document.getElementById('countFeedbacks').textContent=lista.length;
   var c=document.getElementById('listaFeedbacks');
