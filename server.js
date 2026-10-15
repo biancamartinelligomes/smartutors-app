@@ -120,7 +120,9 @@ app.use(passport.initialize());
 app.use(passport.session());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(express.static('public', { etag: false, lastModified: false, setHeaders: (res, filePath) => {
+  if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-store');
+}}));
 
 // ── AUTH ROUTES ─────────────────────────────────────────────
 app.get('/auth/google',
@@ -173,9 +175,10 @@ app.get('/api/aulas', requireAuth, async (req, res) => {
     let query, params;
     if (perfil === 'admin') {
       query = `
-        SELECT a.*, 
+        SELECT a.*,
           EXISTS(SELECT 1 FROM feedbacks f WHERE f.aula_id = a.id) as tem_feedback
         FROM aulas a
+        WHERE a.data_aula >= (CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo') - INTERVAL '7 days'
         ORDER BY a.data_aula ASC, a.hora_inicio ASC
       `;
       params = [];
@@ -185,6 +188,7 @@ app.get('/api/aulas', requireAuth, async (req, res) => {
           EXISTS(SELECT 1 FROM feedbacks f WHERE f.aula_id = a.id) as tem_feedback
         FROM aulas a
         WHERE a.professor_email = $1
+          AND a.data_aula >= (CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo') - INTERVAL '7 days'
         ORDER BY a.data_aula ASC, a.hora_inicio ASC
       `;
       params = [email];
