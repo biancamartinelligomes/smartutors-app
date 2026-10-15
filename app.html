@@ -127,6 +127,7 @@ body{font-family:'Jost',sans-serif;font-weight:300;background:var(--warm-white);
   <nav class="nav-tabs">
     <button class="nav-tab active" data-tab="agenda" onclick="switchTab('agenda')">Pendentes</button>
     <button class="nav-tab" data-tab="feedbacks" onclick="switchTab('feedbacks')">Enviados</button>
+    <button class="nav-tab admin-only" data-tab="professores" onclick="switchTab('professores')" style="display:none;">Professores</button>
   </nav>
   <div class="main">
     <div id="tab-agenda">
@@ -134,8 +135,20 @@ body{font-family:'Jost',sans-serif;font-weight:300;background:var(--warm-white);
       <div id="listaAulas"><div class="empty-state"><div class="loading-bar" style="margin:0 auto;animation:barIn 1.5s ease infinite alternate;"></div></div></div>
     </div>
     <div id="tab-feedbacks" style="display:none;">
-      <div class="section-label">Feedbacks enviados<span class="count-pill" id="countFeedbacks">0</span></div>
+      <div class="section-label" id="labelEnviados">Feedbacks enviados<span class="count-pill" id="countFeedbacks">0</span></div>
       <div id="listaFeedbacks"><div class="empty-state"><div class="loading-bar" style="margin:0 auto;animation:barIn 1.5s ease infinite alternate;"></div></div></div>
+      <!-- Aba extra para professor: feedbacks já confirmados pelo admin -->
+      <div id="secaoConfirmados" style="display:none;margin-top:32px;">
+        <div class="section-label">Confirmados pelo admin<span class="count-pill" id="countConfirmados">0</span></div>
+        <div id="listaConfirmados"></div>
+      </div>
+    </div>
+    <div id="tab-professores" style="display:none;">
+      <div class="section-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Professores cadastrados<span class="count-pill" id="countProfs">0</span></span>
+        <button onclick="abrirModalProf()" style="background:var(--gold);color:var(--charcoal);border:none;padding:7px 16px;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;font-weight:600;">+ Novo</button>
+      </div>
+      <div id="listaProfs"></div>
     </div>
   </div>
 </div>
@@ -152,6 +165,19 @@ body{font-family:'Jost',sans-serif;font-weight:300;background:var(--warm-white);
     <button class="btn-cancelar" onclick="fecharModal()">Cancelar</button>
   </div>
 </div>
+<!-- Modal Novo Professor -->
+<div class="modal-overlay" id="modalProfOverlay" onclick="fecharModalProfSeFora(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-eyebrow">Gerenciar Professores</div>
+    <div class="modal-title">Novo Professor</div>
+    <div class="form-group"><label class="form-label">Nome completo</label><input class="form-input" type="text" id="inputProfNome" placeholder="Ex: Ana Lima"></div>
+    <div class="form-group"><label class="form-label">E-mail Google</label><input class="form-input" type="email" id="inputProfEmail" placeholder="professor@smartutors.com.br"></div>
+    <div class="form-group"><label class="form-label">WhatsApp (opcional)</label><input class="form-input" type="tel" id="inputProfTel" placeholder="(19) 99999-9999"></div>
+    <button class="btn-salvar" id="btnSalvarProf" onclick="salvarProf()">Cadastrar Professor</button>
+    <button class="btn-cancelar" onclick="fecharModalProf()">Cancelar</button>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <script>
 var usuario=null,aulaAtual=null,aulas=[],imagemFile=null,recognition=null,gravando=false;
@@ -163,17 +189,20 @@ window.onload=function(){
     var ini=u.nome.split(' ').map(function(n){return n[0];}).join('').substring(0,2).toUpperCase();
     document.getElementById('userMonogram').textContent=ini;
     document.getElementById('userName').textContent=u.nome||u.email;
-    if(u.perfil==='admin')document.getElementById('adminTag').style.display='block';
+    if(u.perfil==='admin'){document.getElementById('adminTag').style.display='block';document.querySelectorAll('.admin-only').forEach(function(el){el.style.display='';});}
+    if(u.perfil==='professor')document.getElementById('labelEnviados').childNodes[0].textContent='Meus feedbacks enviados';
     var el=document.getElementById('loading');el.style.opacity='0';
     setTimeout(function(){el.style.display='none';document.getElementById('app').style.display='block';},500);
     carregarAulas();carregarFeedbacks();
   }).catch(function(){window.location='/';});
 };
 function switchTab(tab){
-  ['agenda','feedbacks'].forEach(function(t){
-    document.getElementById('tab-'+t).style.display=t===tab?'block':'none';
-    document.querySelector('[data-tab="'+t+'"]').classList.toggle('active',t===tab);
+  var tabs=['agenda','feedbacks','professores'];
+  tabs.forEach(function(t){
+    var el=document.getElementById('tab-'+t);if(el)el.style.display=t===tab?'block':'none';
+    var btn=document.querySelector('[data-tab="'+t+'"]');if(btn)btn.classList.toggle('active',t===tab);
   });
+  if(tab==='professores')carregarProfs();
 }
 function carregarAulas(){fetch('/api/aulas').then(function(r){return r.json();}).then(renderAulas).catch(function(){mostrarToast('Erro ao carregar aulas','erro');});}
 function renderAulas(lista){
@@ -197,7 +226,36 @@ function renderAulas(lista){
   });
 }
 function atribuirProf(sel){if(!sel.value)return;fetch('/api/aulas/'+sel.dataset.id+'/professor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:sel.value})}).then(function(){mostrarToast('Professor atribuído','ok');carregarAulas();});}
-function carregarFeedbacks(){fetch('/api/feedbacks').then(function(r){return r.json();}).then(renderFeedbacks);}
+function carregarFeedbacks(){
+  fetch('/api/feedbacks').then(function(r){return r.json();}).then(renderFeedbacks);
+  // Para professores, carrega também os já confirmados
+  if(usuario.perfil==='professor'){
+    fetch('/api/feedbacks/enviados').then(function(r){return r.json();}).then(renderConfirmados);
+  }
+}
+function renderConfirmados(lista){
+  // Filtra apenas os confirmados para o professor
+  var confirmados=lista.filter(function(f){return f.confirmado;});
+  document.getElementById('countConfirmados').textContent=confirmados.length;
+  var sec=document.getElementById('secaoConfirmados');
+  sec.style.display=confirmados.length>0?'block':'none';
+  var c=document.getElementById('listaConfirmados');
+  if(!confirmados.length){c.innerHTML='';return;}
+  c.innerHTML='';
+  confirmados.forEach(function(fb,idx){
+    var ini=fb.professor.split('@')[0].substring(0,2).toUpperCase();
+    var imgH=fb.imagemUrl?'<img class="fb-img" src="'+fb.imagemUrl+'" onclick="window.open(this.src)">':'';
+    var card=document.createElement('div');
+    card.className='feedback-card';card.style.animationDelay=(idx*.05)+'s';
+    card.style.opacity='0.7';
+    card.innerHTML=
+      '<div class="fb-header"><div class="fb-monogram" style="background:var(--forest);">'+ini+'</div>'+
+      '<div class="fb-meta"><div class="fb-prof">'+fb.professor+'</div><div class="fb-date">'+fb.timestamp+' · ✓ Confirmado</div></div></div>'+
+      '<div class="fb-aluno">'+fb.aluno+'</div><div class="fb-divider"></div>'+
+      '<div class="fb-text">'+fb.feedback+'</div>'+imgH;
+    c.appendChild(card);
+  });
+}
 function renderFeedbacks(lista){
   document.getElementById('countFeedbacks').textContent=lista.length;
   var c=document.getElementById('listaFeedbacks');
@@ -256,6 +314,57 @@ function salvarFeedback(){
     fetch('/api/feedbacks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idAula:aulaAtual.id,aluno:aluno,dataAula:aulaAtual.data,feedback:feedback,imagemUrl:imgUrl||''})}).then(function(r){return r.json();}).then(function(){btn.disabled=false;btn.textContent='Salvar Feedback';fecharModal();mostrarToast('Feedback registrado','ok');carregarAulas();carregarFeedbacks();setTimeout(function(){switchTab('feedbacks');},800);}).catch(function(){btn.disabled=false;btn.textContent='Salvar Feedback';mostrarToast('Erro ao salvar','erro');});
   }
   if(imagemFile){var fd=new FormData();fd.append('imagem',imagemFile);fetch('/api/upload',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(r){salvar(r.url||'');}).catch(function(){salvar('');});}else{salvar('');}
+}
+// ── GERENCIAR PROFESSORES ──
+function carregarProfs(){
+  fetch('/api/usuarios').then(function(r){return r.json();}).then(function(lista){
+    document.getElementById('countProfs').textContent=lista.length;
+    var c=document.getElementById('listaProfs');
+    if(!lista.length){c.innerHTML='<div class="empty-state"><div class="empty-bar"></div><div class="empty-text">Nenhum professor cadastrado</div></div>';return;}
+    c.innerHTML='';
+    lista.forEach(function(p){
+      var ini=p.nome.split(' ').map(function(n){return n[0];}).join('').substring(0,2).toUpperCase();
+      var card=document.createElement('div');
+      card.className='feedback-card';
+      card.style.cssText='display:flex;align-items:center;gap:14px;padding:16px 18px;';
+      card.innerHTML=
+        '<div class="fb-monogram" style="flex-shrink:0;">'+ini+'</div>'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="font-family:\'Cormorant Garamond\',serif;font-size:17px;color:var(--text-primary);font-weight:600;">'+p.nome+'</div>'+
+          '<div style="font-family:\'Jost\',sans-serif;font-size:11px;color:var(--text-muted);margin-top:2px;">'+p.email+'</div>'+
+          (p.telefone?'<div style="font-family:\'Jost\',sans-serif;font-size:11px;color:var(--text-muted);">'+p.telefone+'</div>':'')+
+        '</div>'+
+        '<button onclick="excluirProf('+p.id+',\''+p.nome+'\')" style="background:none;border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.3);padding:6px 12px;font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:0.1em;cursor:pointer;" onmouseover="this.style.borderColor=\'#c0392b\';this.style.color=\'#c0392b\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.1)\';this.style.color=\'rgba(255,255,255,0.3)\'">Remover</button>';
+      c.appendChild(card);
+    });
+  }).catch(function(){mostrarToast('Erro ao carregar professores','erro');});
+}
+function abrirModalProf(){
+  document.getElementById('inputProfNome').value='';
+  document.getElementById('inputProfEmail').value='';
+  document.getElementById('inputProfTel').value='';
+  document.getElementById('modalProfOverlay').classList.add('open');
+  document.body.style.overflow='hidden';
+  setTimeout(function(){document.getElementById('inputProfNome').focus();},300);
+}
+function fecharModalProf(){document.getElementById('modalProfOverlay').classList.remove('open');document.body.style.overflow='';}
+function fecharModalProfSeFora(e){if(e.target===document.getElementById('modalProfOverlay'))fecharModalProf();}
+function salvarProf(){
+  var nome=document.getElementById('inputProfNome').value.trim();
+  var email=document.getElementById('inputProfEmail').value.trim();
+  var tel=document.getElementById('inputProfTel').value.trim();
+  if(!nome){mostrarToast('Informe o nome','erro');return;}
+  if(!email){mostrarToast('Informe o e-mail','erro');return;}
+  var btn=document.getElementById('btnSalvarProf');btn.disabled=true;btn.textContent='Salvando...';
+  fetch('/api/usuarios',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nome:nome,email:email,telefone:tel||null})}).then(function(r){return r.json();}).then(function(r){
+    btn.disabled=false;btn.textContent='Cadastrar Professor';
+    if(r.erro){mostrarToast(r.erro,'erro');return;}
+    fecharModalProf();mostrarToast(nome+' cadastrado com sucesso','ok');carregarProfs();
+  }).catch(function(){btn.disabled=false;btn.textContent='Cadastrar Professor';mostrarToast('Erro ao cadastrar','erro');});
+}
+function excluirProf(id,nome){
+  if(!confirm('Remover '+nome+'?\n\nEle não conseguirá mais acessar o sistema até ser recadastrado.')){return;}
+  fetch('/api/usuarios/'+id,{method:'DELETE'}).then(function(){mostrarToast(nome+' removido','ok');carregarProfs();}).catch(function(){mostrarToast('Erro ao remover','erro');});
 }
 var tt=null;
 function mostrarToast(msg,tipo){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(tipo?' '+tipo:'');if(tt)clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('show');},3000);}
