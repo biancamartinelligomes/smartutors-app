@@ -328,6 +328,36 @@ app.post('/api/aulas/:id/professor', requireAuth, async (req, res) => {
   res.json({ sucesso: true });
 });
 
+// ── GERENCIAR PROFESSORES (admin) ───────────────────────────
+app.get('/api/usuarios', requireAuth, async (req, res) => {
+  if (req.user.perfil !== 'admin') return res.status(403).json({ erro: 'Sem permissão' });
+  const result = await pool.query(
+    "SELECT id, nome, email, telefone, criado_em FROM usuarios WHERE perfil='professor' ORDER BY nome"
+  );
+  res.json(result.rows);
+});
+
+app.post('/api/usuarios', requireAuth, async (req, res) => {
+  if (req.user.perfil !== 'admin') return res.status(403).json({ erro: 'Sem permissão' });
+  const { nome, email, telefone } = req.body;
+  if (!nome || !email) return res.status(400).json({ erro: 'Nome e email são obrigatórios' });
+  try {
+    const result = await pool.query(
+      "INSERT INTO usuarios (nome, email, telefone, perfil) VALUES ($1, $2, $3, 'professor') ON CONFLICT (email) DO UPDATE SET nome=$1, telefone=$3 RETURNING *",
+      [nome, email.toLowerCase().trim(), telefone || null]
+    );
+    res.json(result.rows[0]);
+  } catch (e) {
+    res.status(400).json({ erro: e.message });
+  }
+});
+
+app.delete('/api/usuarios/:id', requireAuth, async (req, res) => {
+  if (req.user.perfil !== 'admin') return res.status(403).json({ erro: 'Sem permissão' });
+  await pool.query('DELETE FROM usuarios WHERE id=$1 AND perfil=$2', [req.params.id, 'professor']);
+  res.json({ sucesso: true });
+});
+
 // ── SINCRONIZAÇÃO GOOGLE CALENDAR ───────────────────────────
 async function sincronizarCalendario() {
   try {
